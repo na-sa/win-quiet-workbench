@@ -34,10 +34,12 @@ The original ten settings remain the default. Add `-PerformanceOptions` to inclu
 | Reduce minimize/maximize animations | Reduces window transition effects; does not disable every animation in every app. |
 | Disable taskbar animations | Reduces taskbar visual effects. |
 | Disable transparency | Makes supported Windows surfaces opaque. |
-| Hide the Widgets button | Removes the taskbar entry point; does not uninstall Widgets or guarantee its background processes stop. |
+| Disable Widgets | Uses the device-wide Allow widgets policy on supported Windows editions, including Windows 11 Pro. Applies to all users and requires administrator rights. The app package is not uninstalled. |
 | Disable Search highlights | Reduces featured content in Search; preserves local search and does not globally disable web results. |
 
 These primarily improve perceived responsiveness and reduce distractions. Performance gains depend on hardware and workload and have not been benchmarked. Sign out and back in before evaluating visual changes. Restore recognizes optional settings from its backup without requiring `-PerformanceOptions` again.
+
+`-UserSettingsOnly` skips the device-wide Widgets policy. Direct writes to the former `TaskbarDa` preference were denied during live testing, so the preset now uses Microsoft's documented [Allow widgets policy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-newsandinterests#allownewsandinterests). Windows edition support and organizational policies can affect whether it takes effect.
 
 ```powershell
 # Preview baseline plus optional changes and the startup review

@@ -49,11 +49,13 @@ $performanceSettings = @(
     @{Path='HKCU:\Control Panel\Desktop\WindowMetrics'; Name='MinAnimate'; Value='0'; Kind='String'; Label='Reduce minimize and maximize animations'},
     @{Path="$explorer\Advanced"; Name='TaskbarAnimations'; Value=0; Label='Disable taskbar animations'},
     @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'; Name='EnableTransparency'; Value=0; Label='Disable transparency effects'},
-    @{Path="$explorer\Advanced"; Name='TaskbarDa'; Value=0; Label='Hide Widgets taskbar button'},
+    @{Path='HKLM:\SOFTWARE\Policies\Microsoft\Dsh'; Name='AllowNewsAndInterests'; Value=0; Label='Disable Widgets for this device'},
     @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings'; Name='IsDynamicSearchBoxEnabled'; Value=0; Label='Disable Search highlights'}
 )
 # Restore must recognize optional settings even when the preset is not supplied.
 if ($PerformanceOptions -or $RestoreFrom) { $settings += $performanceSettings }
+# Retain compatibility with backups from the former taskbar-button setting.
+if ($RestoreFrom) { $settings += @{Path="$explorer\Advanced"; Name='TaskbarDa'; Value=0; Label='Widgets taskbar button (legacy)'} }
 $explanations = @{
     HideFileExt='Shows suffixes such as .txt and .ps1 so you can identify file types.'
     Hidden='Shows normally hidden files and folders; protected operating-system files stay hidden.'
@@ -69,6 +71,7 @@ $explanations = @{
     TaskbarAnimations='Disables taskbar animations after a shell refresh; visual responsiveness may improve.'
     EnableTransparency='Makes supported Windows surfaces opaque; performance gains may be small.'
     TaskbarDa='Hides the Widgets button to reduce distractions; does not uninstall Widgets or guarantee background processes stop.'
+    AllowNewsAndInterests='Disables Widgets for all users through the Windows device policy; requires administrator rights and may require signing out or restarting. The app package is not uninstalled.'
     IsDynamicSearchBoxEnabled='Turns off Search highlights and featured content; local search remains available and web results are not globally disabled.'
 }
 if ($PerformanceReport -or $PerformanceOptions) {
