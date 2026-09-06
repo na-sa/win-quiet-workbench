@@ -111,6 +111,14 @@ function Set-LidValue($Path, $Name, $Value) {
     if ((Get-ActiveScheme) -eq $schemeId) { Invoke-PowerCfg @('/setactive', $schemeId) | Out-Null }
 }
 
+function Ensure-RegistryKey([string]$Path) {
+    # Existing Windows keys must not be recreated. New-Item -Force can require
+    # permissions beyond updating a value and can overwrite registry keys.
+    if (-not (Test-Path -LiteralPath $Path -ErrorAction Stop)) {
+        New-Item -Path $Path -ErrorAction Stop | Out-Null
+    }
+}
+
 $script:changeLogPath = $null
 function Write-ChangeLog {
     param($Operation, $Status, $Description, $Before, $Target, $BackupFile, $Detail)
@@ -251,7 +259,7 @@ if ($RestoreFrom) {
             if (-not $entry.Exists) { $description += ' (remove the added registry value and return to the Windows default)' }
             Invoke-LoggedChange 'Restore' $description $before $entry (Resolve-Path -LiteralPath $RestoreFrom).Path {
             if ($entry.Exists) {
-                New-Item -Path $entry.Path -Force | Out-Null
+                Ensure-RegistryKey $entry.Path
                 New-ItemProperty -LiteralPath $entry.Path -Name $entry.Name -PropertyType $entry.Kind -Value $entry.Value -Force | Out-Null
             } elseif ((Read-Value $entry.Path $entry.Name).Exists) {
                 Remove-ItemProperty -LiteralPath $entry.Path -Name $entry.Name
@@ -310,7 +318,7 @@ try {
             if (Test-PowerEntry $setting) {
                 Set-LidValue $setting.Path $setting.Name $setting.Value
             } else {
-            New-Item -Path $setting.Path -Force | Out-Null
+            Ensure-RegistryKey $setting.Path
             New-ItemProperty -LiteralPath $setting.Path -Name $setting.Name -PropertyType DWord -Value $setting.Value -Force | Out-Null
             }
             $actual = Read-Value $setting.Path $setting.Name
