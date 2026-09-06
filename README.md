@@ -8,6 +8,25 @@ This is an independent community project, not affiliated with, sponsored by, or 
 
 `Set-ZenithStyle.ps1` includes eight Explorer, Start, and long-path settings, plus two lid-close settings on detected laptops. This is a custom settings script, not an installation of Microsoft Project Zenith.
 
+## Settings applied
+
+| # | Setting | What changes |
+|---|---|---|
+| 1 | Show file extensions | Shows suffixes such as `.txt` and `.ps1` so file types are visible. |
+| 2 | Show hidden files and folders | Makes normally hidden items visible. Protected operating-system files remain hidden. |
+| 3 | Show the full folder path | Displays the complete folder path in File Explorer's title bar. |
+| 4 | Hide recent files | Hides the recent-files list in Explorer Home without deleting files. |
+| 5 | Hide frequently used folders | Hides frequent folders in Explorer Home without deleting folders. |
+| 6 | Disable Explorer sync-provider tips | Turns off sync-provider tips and promotional messages inside Explorer. |
+| 7 | Disable Start tips and app recommendations | Turns off recommendations for tips, shortcuts, and new apps. This does not remove the entire Recommended section. |
+| 8 | Enable long-path support | Allows compatible applications to use paths beyond the legacy 260-character limit. A reboot may be required. |
+| 9 | Lid close: do nothing while plugged in | On detected laptops, closing the lid alone does not trigger sleep while using AC power. |
+| 10 | Lid close: do nothing on battery | On detected laptops, closing the lid alone does not trigger sleep while using battery power. Battery use continues. |
+
+The two lid-close settings apply to the active power plan only. Idle sleep timers, hibernation timers, and critical-battery protections remain unchanged. Use `-SkipLidSettings` to omit these two changes, or `-UserSettingsOnly` to omit both lid-close settings and long-path support.
+
+## Backups, logs, and running the script
+
 Each successful change prints `Setting applied - here's what it does:` followed by a plain-language explanation. It only says this after verifying the value. Restore prints `Setting restored` with its explanation.
 
 Before the first actual apply change, the script saves its per-setting backup, then attempts to create a Windows System Restore point. It uses the bundled Windows PowerShell 5.1 runtime and verifies that a newly named restore point exists. The attempt and verified sequence number or failure reason are logged. It does not enable System Protection or bypass Windows restore-point frequency limits.
