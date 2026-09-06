@@ -117,6 +117,24 @@ This first version does not configure the details pane, account notifications, C
 
 Sources consulted September 6, 2026:
 
+## Test coverage
+
+`tests/Test-Switches.ps1` exercises the complete script flow using a temporary copy with simulated registry, power-plan, restore-point, startup-query, and Settings-launch operations. Real backup files and JSON logs are created in an isolated temporary folder and removed afterward. Your Windows preferences and startup configuration are not changed by this suite.
+
+Coverage includes default preview, `-Apply`, `-RestoreFrom`, `-UserSettingsOnly`, `-SkipLidSettings`, `-PerformanceOptions`, `-PerformanceReport`, `-ReviewIndexing`, `-WhatIf`, and `-Confirm` acceptance/decline. It checks rollback of missing and existing values, string types, log counts, idempotent reruns, and conflicting apply/restore arguments. The suite was run in Windows PowerShell 5.1 and PowerShell 7; interactive confirmation acceptance and decline were tested in Windows PowerShell 5.1 with supplied test responses.
+
+```powershell
+.\tests\Test-Switches.ps1
+.\tests\Test-RegistryKey.ps1
+# Interactive confirmation tests: answer A (Yes to All) or L (No to All)
+.\tests\Test-Switches.ps1 -ConfirmCase
+.\tests\Test-Switches.ps1 -ConfirmCase -Decline
+```
+
+`Test-RegistryKey.ps1` uses a disposable real HKCU registry key to verify key preservation. The original ten settings were also live-tested successfully on one Windows 11 PC. The automated switch tests do not establish that every visual effect works on every Windows build, that the indexing Settings page renders correctly, or that performance improves. Optional visual settings and full rollback still need live desktop acceptance testing.
+
+## References
+
 - [Microsoft Project Zenith announcement](https://blogs.windows.com/windowsdeveloper/2026/09/04/announcing-project-zenith-the-ready-to-code-windows-experience/)
 - [Microsoft Windows Developer Configuration](https://github.com/microsoft/WindowsDeveloperConfig/tree/main/windows-dev-config)
 - [Windows 11 settings reference](https://learn.microsoft.com/en-us/windows/apps/develop/settings/settings-windows-11)
