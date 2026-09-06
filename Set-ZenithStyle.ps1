@@ -24,7 +24,11 @@ param(
     [switch]$SkipLidSettings,
     [switch]$PerformanceOptions,
     [switch]$PerformanceReport,
-    [switch]$ReviewIndexing
+    [switch]$ReviewIndexing,
+    [switch]$ServerOptions,
+    [switch]$EnableDeveloperMode,
+    [switch]$EnableStorageSense,
+    [switch]$ReviewNotifications
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -54,9 +58,35 @@ $performanceSettings = @(
 )
 # Restore must recognize optional settings even when the preset is not supplied.
 if ($PerformanceOptions -or $RestoreFrom) { $settings += $performanceSettings }
+if ($ServerOptions -or $RestoreFrom) {
+    $settings += @{Path="$explorer\Advanced\TaskbarDeveloperSettings"; Name='TaskbarEndTask'; Value=1; Label='Enable taskbar End task'}
+}
+if ($EnableDeveloperMode -or $RestoreFrom) {
+    $settings += @{Path='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'; Name='AllowDevelopmentWithoutDevLicense'; Value=1; Label='Enable Developer Mode'}
+}
+if ($EnableStorageSense -or $RestoreFrom) {
+    $storagePath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\StorageSense'
+    # Protect personal content before enabling automatic temporary-file cleanup.
+    $settings += @(
+        @{Path=$storagePath; Name='ConfigStorageSenseRecycleBinCleanupThreshold'; Value=0; Label='Preserve Recycle Bin contents'},
+        @{Path=$storagePath; Name='ConfigStorageSenseDownloadsCleanupThreshold'; Value=0; Label='Preserve Downloads'},
+        @{Path=$storagePath; Name='ConfigStorageSenseCloudContentDehydrationThreshold'; Value=0; Label='Keep cloud files locally available'},
+        @{Path=$storagePath; Name='AllowStorageSenseTemporaryFilesCleanup'; Value=1; Label='Allow unused temporary-file cleanup'},
+        @{Path=$storagePath; Name='AllowStorageSenseGlobal'; Value=1; Label='Enable conservative Storage Sense'}
+    )
+}
 # Retain compatibility with backups from the former taskbar-button setting.
 if ($RestoreFrom) { $settings += @{Path="$explorer\Advanced"; Name='TaskbarDa'; Value=0; Label='Widgets taskbar button (legacy)'} }
 $explanations = @{
+    TaskbarEndTask='Adds End task to supported taskbar app menus; using it can discard unsaved work. No app is terminated by this script.'
+    AllowDevelopmentWithoutDevLicense='Enables Windows development features. Remote device discovery and Device Portal are not enabled by this script.'
+    ConfigStorageSenseRecycleBinCleanupThreshold='Prevents Storage Sense from automatically emptying the Recycle Bin.'
+    ConfigStorageSenseDownloadsCleanupThreshold='Prevents Storage Sense from automatically deleting Downloads.'
+    ConfigStorageSenseCloudContentDehydrationThreshold='Prevents Storage Sense from automatically making cloud-backed files online-only.'
+    AllowStorageSenseTemporaryFilesCleanup='Allows Windows to clean temporary files it considers unused. Restoring settings cannot recover deleted files.'
+    AllowStorageSenseGlobal='Enables Storage Sense with the existing cleanup schedule. No cleanup is started by this script; supported Windows editions are required.'
+    AC_SLEEP='Disables idle sleep while plugged in for this power plan. Hibernation, battery timers, manual sleep, and other power plans are unchanged.'
+    AC_DISPLAY='Turns the display off after 10 idle minutes while plugged in; services can continue running.'
     HideFileExt='Shows suffixes such as .txt and .ps1 so you can identify file types.'
     Hidden='Shows normally hidden files and folders; protected operating-system files stay hidden.'
     FullPath='Displays the complete folder path in the File Explorer title bar.'
@@ -91,6 +121,12 @@ if ($ReviewIndexing) {
         Start-Process 'ms-settings:search'
     }
 }
+if ($ReviewNotifications) {
+    Write-Host 'Review Notifications > Do not disturb and automatic rules. Choose your focus hours and priority notifications; no schedule is assumed or changed by this script.'
+    if ($PSCmdlet.ShouldProcess('Windows notification settings', 'Open notifications for manual review')) {
+        Start-Process 'ms-settings:notifications'
+    }
+}
 function Invoke-PowerCfg([string[]]$Arguments) {
     $output = & "$env:SystemRoot\System32\powercfg.exe" @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) { throw "powercfg failed ($LASTEXITCODE): $output" }
@@ -103,7 +139,20 @@ function Get-ActiveScheme {
     $match.Value
 }
 function Test-PowerEntry($Entry) {
-    $Entry.Path -match '^PowerPlan:[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$' -and $Entry.Name -in @('AC','DC')
+    $Entry.Path -match '^PowerPlan:[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$' -and $Entry.Name -in @('AC','DC','AC_SLEEP','AC_DISPLAY')
+}
+function Get-PowerTarget($Name) {
+    switch ($Name) {
+        'AC' { @('SUB_BUTTONS','LIDACTION',0) }
+        'DC' { @('SUB_BUTTONS','LIDACTION',1) }
+        'AC_SLEEP' { @('SUB_SLEEP','STANDBYIDLE',0) }
+        'AC_DISPLAY' { @('SUB_VIDEO','VIDEOIDLE',0) }
+        default { throw 'Invalid power setting name.' }
+    }
+}
+function Test-PowerValue($Name, $Value) {
+    if ($Name -in @('AC','DC')) { return $Value -in @(0,1,2,3) }
+    return ($Value -is [int] -or $Value -is [uint32] -or $Value -is [long]) -and $Value -ge 0 -and $Value -le [uint32]::MaxValue
 }
 if (-not $RestoreFrom -and -not $SkipLidSettings -and -not $UserSettingsOnly) {
     $chassis = @(Get-CimInstance Win32_SystemEnclosure | ForEach-Object { $_.ChassisTypes })
@@ -114,6 +163,11 @@ if (-not $RestoreFrom -and -not $SkipLidSettings -and -not $UserSettingsOnly) {
         $settings += @{Path="PowerPlan:$scheme"; Name='DC'; Value=0; Label='Lid close: do nothing on battery'}
     } else { Write-Host 'Laptop chassis not detected; lid-close settings skipped.' }
 }
+if ($ServerOptions -and -not $RestoreFrom -and -not $UserSettingsOnly) {
+    $scheme = Get-ActiveScheme
+    $settings += @{Path="PowerPlan:$scheme"; Name='AC_SLEEP'; Value=0; Label='Plugged-in idle sleep: Never'}
+    $settings += @{Path="PowerPlan:$scheme"; Name='AC_DISPLAY'; Value=600; Label='Plugged-in display timeout: 10 minutes'}
+}
 if ($UserSettingsOnly) { $settings = @($settings | Where-Object { $_.Path -like 'HKCU:*' }) }
 foreach ($setting in $settings) { if (-not $setting.ContainsKey('Kind')) { $setting.Kind = 'DWord' } }
 
@@ -121,13 +175,15 @@ function Read-Value($Path, $Name) {
     if ($Path -like 'PowerPlan:*') {
         if (-not (Test-PowerEntry ([pscustomobject]@{Path=$Path; Name=$Name}))) { throw 'Invalid power setting.' }
         $schemeId = $Path.Substring(10)
-        $output = Invoke-PowerCfg @('/qh', $schemeId, 'SUB_BUTTONS', 'LIDACTION')
+        $powerTarget = Get-PowerTarget $Name
+        $output = Invoke-PowerCfg @('/qh', $schemeId, $powerTarget[0], $powerTarget[1])
         # The final two hexadecimal indexes are AC then DC, independent of UI language.
         $indexes = [regex]::Matches($output, '0x([0-9a-fA-F]{8})')
-        if ($indexes.Count -ne 2) { throw 'Cannot reliably read both lid-close indexes; no guessed values will be used.' }
-        $index = if ($Name -eq 'AC') { 0 } else { 1 }
-        $value = [Convert]::ToInt32($indexes[$index].Groups[1].Value,16)
-        if ($value -notin @(0,1,2,3)) { throw 'Unexpected lid-close action index.' }
+        $expectedCount = if ($Name -in @('AC','DC')) { 2 } else { 5 }
+        if ($indexes.Count -ne $expectedCount) { throw 'Cannot reliably read power indexes; no guessed values will be used.' }
+        $index = $indexes.Count - 2 + $powerTarget[2]
+        $value = [Convert]::ToUInt32($indexes[$index].Groups[1].Value,16)
+        if (-not (Test-PowerValue $Name $value)) { throw 'Unexpected power setting value.' }
         return [pscustomobject]@{Path=$Path; Name=$Name; Exists=$true; Value=$value; Kind='DWord'}
     }
     $key = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
@@ -142,9 +198,11 @@ function Read-Value($Path, $Name) {
 }
 
 function Set-LidValue($Path, $Name, $Value) {
+    if (-not (Test-PowerEntry ([pscustomobject]@{Path=$Path;Name=$Name})) -or -not (Test-PowerValue $Name $Value)) { throw 'Invalid power setting.' }
     $schemeId = $Path.Substring(10)
-    $option = if ($Name -eq 'AC') { '/setacvalueindex' } else { '/setdcvalueindex' }
-    Invoke-PowerCfg @($option, $schemeId, 'SUB_BUTTONS', 'LIDACTION', [string]$Value) | Out-Null
+    $powerTarget = Get-PowerTarget $Name
+    $option = if ($powerTarget[2] -eq 0) { '/setacvalueindex' } else { '/setdcvalueindex' }
+    Invoke-PowerCfg @($option, $schemeId, $powerTarget[0], $powerTarget[1], [string]$Value) | Out-Null
     # Refresh only if this is still the active plan. Restore does not switch plans.
     if ((Get-ActiveScheme) -eq $schemeId) { Invoke-PowerCfg @('/setactive', $schemeId) | Out-Null }
 }
@@ -270,7 +328,7 @@ if ($RestoreFrom) {
     foreach ($entry in $backup.Entries) {
         if (Test-PowerEntry $entry) {
             if ($UserSettingsOnly) { throw 'This backup includes power settings; omit -UserSettingsOnly when restoring it.' }
-            if (-not $entry.Exists -or $entry.Kind -ne 'DWord' -or $entry.Value -notin @(0,1,2,3)) { throw 'Invalid lid-close backup value.' }
+            if (-not $entry.Exists -or $entry.Kind -ne 'DWord' -or -not (Test-PowerValue $entry.Name $entry.Value)) { throw 'Invalid power backup value.' }
             if (-not $admin -and -not $WhatIfPreference) { throw 'Restore needs an elevated PowerShell.' }
             Read-Value $entry.Path $entry.Name | Out-Null
             continue
@@ -284,8 +342,8 @@ if ($RestoreFrom) {
         if ($PSCmdlet.ShouldProcess("$($entry.Path) / $($entry.Name)", 'Restore previous setting value')) {
             $before = Read-Value $entry.Path $entry.Name
             if (Test-PowerEntry $entry) {
-                $actionName = @('Do nothing','Sleep','Hibernate','Shut down')[[int]$entry.Value]
-                $description = "Restore lid-close action ($($entry.Name)) to '$actionName' in the backed-up power plan."
+                $actionName = if ($entry.Name -in @('AC','DC')) { @('Do nothing','Sleep','Hibernate','Shut down')[[int]$entry.Value] } else { "$($entry.Value) seconds (zero means Never)" }
+                $description = "Restore power setting ($($entry.Name)) to '$actionName' in the backed-up power plan."
                 Invoke-LoggedChange 'Restore' $description $before $entry (Resolve-Path -LiteralPath $RestoreFrom).Path {
                     Set-LidValue $entry.Path $entry.Name $entry.Value
                     if ((Read-Value $entry.Path $entry.Name).Value -ne $entry.Value) { throw 'Lid-close restore verification failed.' }
@@ -353,6 +411,14 @@ try {
             $target = [pscustomobject]@{Exists=$true; Kind=$setting.Kind; Value=$setting.Value}
             $description = "$($setting.Label). $($explanations[$setting.Name])"
             Invoke-LoggedChange 'Apply' $description $before $target $backupPath {
+            if ($setting.Name -eq 'AllowStorageSenseGlobal') {
+                foreach ($protection in @('ConfigStorageSenseRecycleBinCleanupThreshold','ConfigStorageSenseDownloadsCleanupThreshold','ConfigStorageSenseCloudContentDehydrationThreshold')) {
+                    $protectedValue = Read-Value $setting.Path $protection
+                    if (-not $protectedValue.Exists -or $protectedValue.Kind -ne 'DWord' -or $protectedValue.Value -ne 0) {
+                        throw 'Storage Sense was not enabled because a content-preservation setting was skipped or changed.'
+                    }
+                }
+            }
             if (Test-PowerEntry $setting) {
                 Set-LidValue $setting.Path $setting.Name $setting.Value
             } else {

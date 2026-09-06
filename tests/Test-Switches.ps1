@@ -51,7 +51,7 @@ function New-ItemProperty {
 }
 function Remove-ItemProperty($LiteralPath,$Name) { $global:fakeValues.Remove("$LiteralPath/$Name") }
 function Start-Process($FilePath) {
- if ($FilePath -ne 'ms-settings:search') { throw 'Unexpected process launch' }
+ if ($FilePath -notin @('ms-settings:search','ms-settings:notifications')) { throw 'Unexpected process launch' }
  $global:settingsLaunches++
 }
 function Reset-TestState {
@@ -119,6 +119,49 @@ try {
  Invoke-Case @{RestoreFrom=$backup}
  Assert ($global:fakeValues["$p/MinAnimate"].Value -eq '1') 'String restore failed'
  Write-Output 'PASS: string type preservation and idempotent apply'
+ foreach ($newOptions in @(@{ServerOptions=$true},@{EnableDeveloperMode=$true},@{EnableStorageSense=$true},@{ServerOptions=$true;EnableDeveloperMode=$true;EnableStorageSense=$true})) {
+  Reset-TestState
+  $plan='PowerPlan:11111111-2222-3333-4444-555555555555'
+  foreach ($mode in @('AC_SLEEP','AC_DISPLAY')) {
+   $global:fakeValues["$plan/$mode"]=[pscustomobject]@{Path=$plan;Name=$mode;Exists=$true;Kind='DWord';Value=300}
+  }
+  Invoke-Case $newOptions
+  Invoke-Case ($newOptions + @{Apply=$true;WhatIf=$true})
+  Assert ($global:fakeValues.Count -eq 4 -and $global:restoreCalls -eq 0) 'New preview or WhatIf changed settings'
+  Invoke-Case ($newOptions + @{Apply=$true})
+  $backup=Latest-Backup
+  $log=Get-ChildItem (Join-Path $testDir 'zenith-logs') | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+  $applied=@(Get-Content $log.FullName | ConvertFrom-Json | Where-Object { $_.Operation -eq 'Apply' -and $_.Status -eq 'Succeeded' })
+  $expected=10
+  if ($newOptions.ServerOptions) {
+   $expected+=3
+   Assert ($global:fakeValues["$plan/AC_SLEEP"].Value -eq 0 -and $global:fakeValues["$plan/AC_DISPLAY"].Value -eq 600) 'Wrong server power targets'
+   Assert ($global:fakeValues.ContainsKey('HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings/TaskbarEndTask')) 'Wrong End task registry path'
+  }
+  if ($newOptions.EnableDeveloperMode) { $expected++ }
+  if ($newOptions.EnableStorageSense) {
+   $expected+=5
+   $storage=@($applied | Where-Object { $_.SettingPath -like '*\StorageSense' })
+   Assert ($storage.Count -eq 5 -and $storage[-1].ValueName -eq 'AllowStorageSenseGlobal') 'Storage Sense enabled before protections'
+   Assert (@($storage[0..2] | Where-Object { $_.Target.Value -eq 0 }).Count -eq 3) 'Storage Sense preservation values incorrect'
+  }
+  Assert ($applied.Count -eq $expected) 'Missing new-option logs'
+  Invoke-Case ($newOptions + @{Apply=$true})
+  Assert ($global:restoreCalls -eq 1) 'New options not idempotent'
+  Invoke-Case @{RestoreFrom=$backup;WhatIf=$true}
+  Assert ($global:fakeValues.Count -gt 4) 'New restore WhatIf changed settings'
+  Invoke-Case @{RestoreFrom=$backup}
+  Assert ($global:fakeValues.Count -eq 4 -and $global:fakeValues["$plan/AC_SLEEP"].Value -eq 300 -and $global:fakeValues["$plan/AC_DISPLAY"].Value -eq 300) 'New settings rollback failed'
+ }
+ Reset-TestState
+ Invoke-Case @{Apply=$true;ServerOptions=$true;EnableDeveloperMode=$true;EnableStorageSense=$true;UserSettingsOnly=$true}
+ Assert ($global:fakeValues.Count -eq 10 -and @($global:fakeValues.Values | Where-Object Path -like 'HKLM:*').Count -eq 0) 'UserSettingsOnly did not filter new machine settings'
+ Reset-TestState
+ Invoke-Case @{ReviewNotifications=$true;ReviewIndexing=$true;WhatIf=$true}
+ Assert ($global:settingsLaunches -eq 0) 'Review WhatIf opened settings'
+ Invoke-Case @{ReviewNotifications=$true;ReviewIndexing=$true}
+ Assert ($global:settingsLaunches -eq 2 -and $global:fakeValues.Count -eq 2) 'Guided reviews failed'
+ Write-Output 'PASS: server, developer, storage presets, logging order, rollback, idempotency, user-only filtering, notification review'
  $rejected=$false
  try { Invoke-Case @{Apply=$true;RestoreFrom=$backup} } catch { $rejected=$true }
  Assert $rejected 'Conflicting modes accepted'

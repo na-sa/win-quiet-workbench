@@ -23,7 +23,7 @@ This is an independent community project, not affiliated with, sponsored by, or 
 | 9 | Lid close: do nothing while plugged in | On detected laptops, closing the lid alone does not trigger sleep while using AC power. |
 | 10 | Lid close: do nothing on battery | On detected laptops, closing the lid alone does not trigger sleep while using battery power. Battery use continues. |
 
-The two lid-close settings apply to the active power plan only. Idle sleep timers, hibernation timers, and critical-battery protections remain unchanged. Use `-SkipLidSettings` to omit these two changes, or `-UserSettingsOnly` to omit both lid-close settings and long-path support.
+The two lid-close settings apply to the active power plan only. Without -ServerOptions, idle sleep timers remain unchanged. Hibernation timers and critical-battery protections remain unchanged. Use `-SkipLidSettings` to omit these two changes, or `-UserSettingsOnly` to omit both lid-close settings and long-path support.
 
 ## Optional performance and distraction controls
 
@@ -61,6 +61,40 @@ These primarily improve perceived responsiveness and reduce distractions. Perfor
 
 References: [Microsoft performance guidance](https://support.microsoft.com/en-us/windows/tips-to-improve-pc-performance-in-windows-b3b3ef5b-5953-fb6a-2528-4bbed82fba96), [search indexing](https://support.microsoft.com/en-us/windows/experience/performance-optimization/search-indexing-in-windows), and [reducing visual distractions](https://support.microsoft.com/en-us/accessibility/windows/make-it-easier-to-focus-on-tasks).
 
+## Optional server and development settings
+
+These switches add to the baseline. They preview by default; add `-Apply` to make changes with backups, the restore-point check, per-change explanations, logs, and value verification.
+
+| Switch | Settings and limits |
+|---|---|
+| `-ServerOptions` | Sets plugged-in idle sleep to Never and display timeout to 10 minutes in the active power plan. Enables End task in supported Windows 11 taskbar app menus. Using End task can lose unsaved work; the script itself does not terminate apps. |
+| `-EnableDeveloperMode` | Enables the Windows Developer Mode preference. Use when needed by development tools. Does not enable Device Portal or remote discovery. Administrator rights required. |
+| `-EnableStorageSense` | Enables automatic unused temporary-file cleanup while preserving Downloads, Recycle Bin contents, and local cloud-file availability. Keeps the existing cleanup schedule. Uses device policies supported on Pro, Enterprise, Education, and IoT Enterprise editions; administrator rights required. |
+| `-ReviewNotifications` | Opens Notifications settings to choose Do not disturb rules and priority notifications yourself. No schedule is assumed. |
+| `-ReviewIndexing` | Opens Search settings to select individual indexing exclusions yourself. |
+
+Windows Update active hours and startup configuration are not configured. Notification schedules and indexing exclusions are guided reviews because they depend on your preferred hours and folders. `-WhatIf` suppresses opening either Settings page. Manual changes in Settings are not included in this script's backups or logs.
+
+`-UserSettingsOnly` excludes the new machine policies and power timers, retaining the taskbar preference. `-SkipLidSettings` skips only lid-close settings, so it can be combined with `-ServerOptions` to change plugged-in timers without changing lid behavior. Battery timers, hibernation timers, manual sleep, and other power plans are unchanged. These options do not guarantee uninterrupted server uptime or improve compute throughput.
+
+Storage Sense preservation policies are written before automatic cleanup is enabled, and verified again before enabling it. No cleanup is started by the script. **Restoring settings cannot recover files that Windows later deletes.** Policies can make the corresponding Settings controls managed. A backup restores the previous policy values, including removing values originally absent.
+
+```powershell
+# Preview the new settings
+.\Set-ZenithStyle.ps1 -ServerOptions -EnableDeveloperMode -EnableStorageSense
+
+# Simulate applying them without changing Windows
+.\Set-ZenithStyle.ps1 -ServerOptions -EnableDeveloperMode -EnableStorageSense -Apply -WhatIf
+
+# Apply the reviewed selection in an administrator PowerShell
+.\Set-ZenithStyle.ps1 -ServerOptions -EnableDeveloperMode -EnableStorageSense -Apply
+
+# Choose notification rules and indexing exclusions in Windows Settings
+.\Set-ZenithStyle.ps1 -ReviewNotifications -ReviewIndexing
+```
+
+References: [Storage Sense policies](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-storage), [Developer Mode](https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode), and [taskbar End task registry mapping](https://github.com/microsoft/winget-dsc/issues/171). Taskbar behavior varies by Windows build; registry verification does not prove the menu has refreshed.
+
 ## Backups and execution
 
 Each successful change prints `Setting applied - here's what it does:` followed by a plain-language explanation. It only says this after verifying the value. Restore prints `Setting restored` with its explanation.
@@ -69,7 +103,7 @@ Before the first actual apply change, the script saves its per-setting backup, t
 
 If System Restore is unavailable, disabled, lacks permission, fails, or does not produce a verifiable new point, the script explains the problem and asks whether to continue without one. Type `YES` to proceed using the per-setting backup. Any other response, an empty response, or unavailable interactive input stops before any setting changes. This also applies to a non-elevated `-UserSettingsOnly` run. Preview, `-WhatIf`, already-matching settings, and `-RestoreFrom` do not create restore points. Creating a point can take several minutes.
 
-Laptop detection uses Windows chassis types (portable, laptop, notebook, sub-notebook, convertible, detachable). On detected laptops, the active power plan's lid-close action becomes **Do nothing** for both plugged-in and battery operation. Each is backed up, logged, and verified separately. Idle sleep timers, hibernation timers, and critical-battery protections remain unchanged: closing the lid alone will not trigger sleep, but those other conditions still can. Other power plans are not modified; switching ASUS performance modes may select another plan. Hardware-reported chassis types can be inaccurate. Desktops are skipped.
+Laptop detection uses Windows chassis types (portable, laptop, notebook, sub-notebook, convertible, detachable). On detected laptops, the active power plan's lid-close action becomes **Do nothing** for both plugged-in and battery operation. Each is backed up, logged, and verified separately. Without -ServerOptions, idle sleep timers remain unchanged. Hibernation timers and critical-battery protections remain unchanged: closing the lid alone will not trigger sleep, but those other conditions still can. Other power plans are not modified; switching ASUS performance modes may select another plan. Hardware-reported chassis types can be inaccurate. Desktops are skipped.
 
 Open 64-bit PowerShell as administrator under your usual Windows account, then change to the folder containing the script. Administrator PowerShell commonly starts in `C:\Windows\System32`, so navigate to your downloaded or cloned repository first.
 
@@ -117,8 +151,6 @@ The script verifies registry writes; Explorer/Start appearance still needs check
 
 This first version does not configure the details pane, account notifications, Command Palette, taskbar pins, or install runtimes, VS Code, PowerToys, or WSL. Those remain follow-up work. It leaves protected system-file visibility, security controls, and global notifications unchanged.
 
-Sources consulted September 6, 2026:
-
 ## Test coverage
 
 `tests/Test-Switches.ps1` exercises the complete script flow using a temporary copy with simulated registry, power-plan, restore-point, startup-query, and Settings-launch operations. Real backup files and JSON logs are created in an isolated temporary folder and removed afterward. Your Windows preferences and startup configuration are not changed by this suite.
@@ -128,12 +160,15 @@ Coverage includes default preview, `-Apply`, `-RestoreFrom`, `-UserSettingsOnly`
 ```powershell
 .\tests\Test-Switches.ps1
 .\tests\Test-RegistryKey.ps1
+.\tests\Test-PowerSettings.ps1
 # Interactive confirmation tests: answer A (Yes to All) or L (No to All)
 .\tests\Test-Switches.ps1 -ConfirmCase
 .\tests\Test-Switches.ps1 -ConfirmCase -Decline
 ```
 
 `Test-RegistryKey.ps1` uses a disposable real HKCU registry key to verify key preservation. The original ten settings were also live-tested successfully on one Windows 11 PC. The automated switch tests do not establish that every visual effect works on every Windows build, that the indexing Settings page renders correctly, or that performance improves. Optional visual settings and full rollback still need live desktop acceptance testing.
+
+The new server, Developer Mode, and Storage Sense switches were tested individually and together in Windows PowerShell 5.1 and PowerShell 7 using simulated apply, restore, WhatIf, logging, idempotency, and user-only filtering. Guided notification/indexing dispatch was tested with mocked launches. `Test-PowerSettings.ps1` exercises production parsing and command construction with simulated powercfg output, including distinct AC/DC values, malformed output, unsigned timeouts, and restoring an inactive plan. A read-only preview of all new settings also ran on the development machine. New settings have not been live-applied or evaluated for their UI effects.
 
 ## References
 
