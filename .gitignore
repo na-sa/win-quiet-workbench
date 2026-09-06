@@ -1,0 +1,15 @@
+# Machine-specific backups and audit logs must never be published.
+zenith-backups/
+zenith-logs/
+*.clixml
+*.log
+
+# Local work and credentials
+work/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+.DS_Store
+Thumbs.db
