@@ -16,7 +16,19 @@ If System Restore is unavailable, disabled, lacks permission, fails, or does not
 
 Laptop detection uses Windows chassis types (portable, laptop, notebook, sub-notebook, convertible, detachable). On detected laptops, the active power plan's lid-close action becomes **Do nothing** for both plugged-in and battery operation. Each is backed up, logged, and verified separately. Idle sleep timers, hibernation timers, and critical-battery protections remain unchanged: closing the lid alone will not trigger sleep, but those other conditions still can. Other power plans are not modified; switching ASUS performance modes may select another plan. Hardware-reported chassis types can be inaccurate. Desktops are skipped.
 
-Run in 64-bit PowerShell from this folder:
+Open 64-bit PowerShell as administrator under your usual Windows account, then change to the folder containing the script. Administrator PowerShell commonly starts in `C:\Windows\System32`, so navigate to your downloaded or cloned repository first.
+
+If you see **"running scripts is disabled on this system"**, run the following command in that same PowerShell window before running the script:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
+```
+
+This permits local scripts for the current PowerShell process only. Closing the window discards this policy setting; it does not change the saved user or machine policy. The script cannot fix this error itself because Windows blocks it before any script code runs.
+
+If a downloaded copy is still blocked because it is unsigned, review its contents and confirm it came from this repository before running `Unblock-File -LiteralPath .\Set-ZenithStyle.ps1`. That removes the downloaded-file marker from this specific file. If an organizational policy still blocks execution, use `Get-ExecutionPolicy -List` to identify it and contact your administrator.
+
+Run from the folder containing the script:
 
 ```powershell
 # Preview; does not change Windows
