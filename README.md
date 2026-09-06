@@ -25,7 +25,41 @@ This is an independent community project, not affiliated with, sponsored by, or 
 
 The two lid-close settings apply to the active power plan only. Idle sleep timers, hibernation timers, and critical-battery protections remain unchanged. Use `-SkipLidSettings` to omit these two changes, or `-UserSettingsOnly` to omit both lid-close settings and long-path support.
 
-## Backups, logs, and running the script
+## Optional performance and distraction controls
+
+The original ten settings remain the default. Add `-PerformanceOptions` to include five more settings, using the same backup, restore-point check, per-change logging, and verification:
+
+| Optional setting | Effect and limitation |
+|---|---|
+| Reduce minimize/maximize animations | Reduces window transition effects; does not disable every animation in every app. |
+| Disable taskbar animations | Reduces taskbar visual effects. |
+| Disable transparency | Makes supported Windows surfaces opaque. |
+| Hide the Widgets button | Removes the taskbar entry point; does not uninstall Widgets or guarantee its background processes stop. |
+| Disable Search highlights | Reduces featured content in Search; preserves local search and does not globally disable web results. |
+
+These primarily improve perceived responsiveness and reduce distractions. Performance gains depend on hardware and workload and have not been benchmarked. Sign out and back in before evaluating visual changes. Restore recognizes optional settings from its backup without requiring `-PerformanceOptions` again.
+
+```powershell
+# Preview baseline plus optional changes and the startup review
+.\Set-ZenithStyle.ps1 -PerformanceOptions
+
+# Apply baseline plus optional changes
+.\Set-ZenithStyle.ps1 -Apply -PerformanceOptions
+
+# Report startup registrations and indexing suggestions without applying changes
+.\Set-ZenithStyle.ps1 -PerformanceReport
+
+# Open Windows Search settings to choose indexing exclusions yourself
+.\Set-ZenithStyle.ps1 -ReviewIndexing
+```
+
+**Startup configuration is never changed.** The report lists registered startup app names as potential contributors to login time and background resource use. Registration does not prove an app is enabled or running. Review actual startup impact in Task Manager. Common candidates include game launchers, optional desktop companions, local AI/container tools, and sync clients, depending on whether you need them at login. The report stays in the console and is not added to Git or change logs.
+
+**Indexing is a guided review, not an automatic exclusion policy.** Use `-ReviewIndexing` to open Settings, then review Classic versus Enhanced indexing and exclude only generated build output, dependency folders, or large datasets you do not need to search. Exclusions can reduce indexing work but reduce search coverage. Keep useful documents and email indexed. This option does not change indexing scope or stop Windows Search. With `-WhatIf`, the Settings page is not opened.
+
+References: [Microsoft performance guidance](https://support.microsoft.com/en-us/windows/tips-to-improve-pc-performance-in-windows-b3b3ef5b-5953-fb6a-2528-4bbed82fba96), [search indexing](https://support.microsoft.com/en-us/windows/experience/performance-optimization/search-indexing-in-windows), and [reducing visual distractions](https://support.microsoft.com/en-us/accessibility/windows/make-it-easier-to-focus-on-tasks).
+
+## Backups and execution
 
 Each successful change prints `Setting applied - here's what it does:` followed by a plain-language explanation. It only says this after verifying the value. Restore prints `Setting restored` with its explanation.
 

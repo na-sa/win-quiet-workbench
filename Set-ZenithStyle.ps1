@@ -21,7 +21,10 @@ param(
     [switch]$Apply,
     [string]$RestoreFrom,
     [switch]$UserSettingsOnly,
-    [switch]$SkipLidSettings
+    [switch]$SkipLidSettings,
+    [switch]$PerformanceOptions,
+    [switch]$PerformanceReport,
+    [switch]$ReviewIndexing
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -42,6 +45,15 @@ $settings = @(
     @{Path="$explorer\Advanced"; Name='Start_IrisRecommendations'; Value=0; Label='Disable Start tips and app recommendations'},
     @{Path='HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'; Name='LongPathsEnabled'; Value=1; Label='Enable long paths for compatible applications'}
 )
+$performanceSettings = @(
+    @{Path='HKCU:\Control Panel\Desktop\WindowMetrics'; Name='MinAnimate'; Value='0'; Kind='String'; Label='Reduce minimize and maximize animations'},
+    @{Path="$explorer\Advanced"; Name='TaskbarAnimations'; Value=0; Label='Disable taskbar animations'},
+    @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'; Name='EnableTransparency'; Value=0; Label='Disable transparency effects'},
+    @{Path="$explorer\Advanced"; Name='TaskbarDa'; Value=0; Label='Hide Widgets taskbar button'},
+    @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\SearchSettings'; Name='IsDynamicSearchBoxEnabled'; Value=0; Label='Disable Search highlights'}
+)
+# Restore must recognize optional settings even when the preset is not supplied.
+if ($PerformanceOptions -or $RestoreFrom) { $settings += $performanceSettings }
 $explanations = @{
     HideFileExt='Shows suffixes such as .txt and .ps1 so you can identify file types.'
     Hidden='Shows normally hidden files and folders; protected operating-system files stay hidden.'
@@ -53,6 +65,28 @@ $explanations = @{
     LongPathsEnabled='Allows compatible applications to use file paths beyond the legacy 260-character limit.'
     AC='Closing the lid does nothing while plugged in, so closing it alone will not put the laptop to sleep.'
     DC='Closing the lid does nothing on battery, so closing it alone will not put the laptop to sleep; battery use continues.'
+    MinAnimate='Reduces minimize and maximize window animations after signing out and back in; does not disable every app animation.'
+    TaskbarAnimations='Disables taskbar animations after a shell refresh; visual responsiveness may improve.'
+    EnableTransparency='Makes supported Windows surfaces opaque; performance gains may be small.'
+    TaskbarDa='Hides the Widgets button to reduce distractions; does not uninstall Widgets or guarantee background processes stop.'
+    IsDynamicSearchBoxEnabled='Turns off Search highlights and featured content; local search remains available and web results are not globally disabled.'
+}
+if ($PerformanceReport -or $PerformanceOptions) {
+    Write-Host 'Performance review: startup configuration is report-only and is never modified.'
+    Write-Host 'Startup registrations can affect login time and background resource use. An entry does not prove it is enabled or currently running.'
+    try {
+        Get-CimInstance Win32_StartupCommand -ErrorAction Stop | Select-Object -ExpandProperty Name -Unique | Sort-Object | ForEach-Object { Write-Host "  Startup item to review: $_" }
+    } catch { Write-Warning "Could not list startup registrations: $($_.Exception.Message)" }
+    Write-Host 'Use Task Manager > Startup apps to review measured startup impact. Review launchers, optional companions, local AI/container tools, and sync clients according to your needs.'
+    Write-Host 'Keep security, VPN, management, and driver tools unless you know they are unnecessary. No performance improvement has been benchmarked by this script.'
+    Write-Host 'Indexing review: exclude generated build output, dependency folders, or large datasets you do not search. Keep documents and email searchable.'
+}
+if ($ReviewIndexing) {
+    Write-Host 'Indexing is a guided option: open Settings > Privacy & security > Search (or Searching Windows). Review Classic versus Enhanced and add specific excluded folders.'
+    Write-Host 'Excluding folders reduces indexed coverage and can reduce indexing work; searches there may be slower or omit results. Windows Search will remain enabled.'
+    if ($PSCmdlet.ShouldProcess('Windows Search settings', 'Open indexing settings for manual review')) {
+        Start-Process 'ms-settings:search'
+    }
 }
 function Invoke-PowerCfg([string[]]$Arguments) {
     $output = & "$env:SystemRoot\System32\powercfg.exe" @Arguments 2>&1
@@ -78,6 +112,7 @@ if (-not $RestoreFrom -and -not $SkipLidSettings -and -not $UserSettingsOnly) {
     } else { Write-Host 'Laptop chassis not detected; lid-close settings skipped.' }
 }
 if ($UserSettingsOnly) { $settings = @($settings | Where-Object { $_.Path -like 'HKCU:*' }) }
+foreach ($setting in $settings) { if (-not $setting.ContainsKey('Kind')) { $setting.Kind = 'DWord' } }
 
 function Read-Value($Path, $Name) {
     if ($Path -like 'PowerPlan:*') {
@@ -279,7 +314,7 @@ if ($RestoreFrom) {
 $pending = @()
 $report = foreach ($setting in $settings) {
     $old = Read-Value $setting.Path $setting.Name
-    $changed = -not $old.Exists -or $old.Kind -ne 'DWord' -or $old.Value -ne $setting.Value
+    $changed = -not $old.Exists -or $old.Kind -ne $setting.Kind -or $old.Value -ne $setting.Value
     if ($changed) { $pending += [pscustomobject]@{Setting=$setting; Old=$old} }
     [pscustomobject]@{
         Setting=$setting.Label
@@ -299,7 +334,7 @@ $restorePointHandled = $false
 try {
     foreach ($item in $pending) {
         $setting = $item.Setting
-        if ($PSCmdlet.ShouldProcess("$($setting.Path) / $($setting.Name)", "$($setting.Label): set DWORD to $($setting.Value)")) {
+        if ($PSCmdlet.ShouldProcess("$($setting.Path) / $($setting.Name)", "$($setting.Label): set $($setting.Kind) to $($setting.Value)")) {
             if (-not $backupPath) {
                 $backupDir = Join-Path $PSScriptRoot 'zenith-backups'
                 New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
@@ -312,17 +347,17 @@ try {
                 $restorePointHandled = $true
             }
             $before = Read-Value $setting.Path $setting.Name
-            $target = [pscustomobject]@{Exists=$true; Kind='DWord'; Value=$setting.Value}
+            $target = [pscustomobject]@{Exists=$true; Kind=$setting.Kind; Value=$setting.Value}
             $description = "$($setting.Label). $($explanations[$setting.Name])"
             Invoke-LoggedChange 'Apply' $description $before $target $backupPath {
             if (Test-PowerEntry $setting) {
                 Set-LidValue $setting.Path $setting.Name $setting.Value
             } else {
             Ensure-RegistryKey $setting.Path
-            New-ItemProperty -LiteralPath $setting.Path -Name $setting.Name -PropertyType DWord -Value $setting.Value -Force | Out-Null
+            New-ItemProperty -LiteralPath $setting.Path -Name $setting.Name -PropertyType $setting.Kind -Value $setting.Value -Force | Out-Null
             }
             $actual = Read-Value $setting.Path $setting.Name
-            if (-not $actual.Exists -or $actual.Kind -ne 'DWord' -or $actual.Value -ne $setting.Value) { throw "Verification failed: $($setting.Name)" }
+            if (-not $actual.Exists -or $actual.Kind -ne $setting.Kind -or $actual.Value -ne $setting.Value) { throw "Verification failed: $($setting.Name)" }
             }
         }
     }
