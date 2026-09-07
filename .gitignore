@@ -1,6 +1,8 @@
 # Machine-specific backups and audit logs must never be published.
 zenith-backups/
 zenith-logs/
+workload-state/
+*.vhdx
 *.clixml
 *.log
 

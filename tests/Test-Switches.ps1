@@ -3,6 +3,7 @@ param([switch]$ConfirmCase,[switch]$Decline)
 $ErrorActionPreference = 'Stop'
 $source = Join-Path $PSScriptRoot '..\Set-ZenithStyle.ps1'
 $text = [IO.File]::ReadAllText((Resolve-Path $source))
+$text = $text.Replace('. (Join-Path $PSScriptRoot ''lib\Common.ps1'')', [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\lib\Common.ps1')))
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseInput($text,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }

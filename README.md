@@ -95,6 +95,50 @@ Storage Sense preservation policies are written before automatic cleanup is enab
 
 References: [Storage Sense policies](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-storage), [Developer Mode](https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode), and [taskbar End task registry mapping](https://github.com/microsoft/winget-dsc/issues/171). Taskbar behavior varies by Windows build; registry verification does not prove the menu has refreshed.
 
+## Development workload options
+
+`-WorkloadOptions` selects the separate workload workflow. It does not reapply the original Windows baseline. Preview first, then apply in an administrator PowerShell:
+
+```powershell
+.\Set-ZenithStyle.ps1 -WorkloadOptions
+.\Set-ZenithStyle.ps1 -WorkloadOptions -Apply -WhatIf
+.\Set-ZenithStyle.ps1 -WorkloadOptions -Apply
+```
+
+For individual options and custom paths, use `Set-WorkloadOptions.ps1`:
+
+| Switch | Behavior |
+|---|---|
+| `-CreateDevDrive` | Creates a new dynamic 100 GB VHDX at `%LOCALAPPDATA%\QuietWorkbench\DevDrive.vhdx`, formatted as a ReFS Dev Drive at `V:` with `Projects` and `Packages` folders. Requires the Hyper-V PowerShell module and Windows Dev Drive support. Never formats an existing disk or resizes physical partitions. |
+| `-PrepareWslWorkspace` | Creates `~/projects` inside the selected distro's Linux filesystem. Default distro is Ubuntu. Uses that distro's default user; if it is root, the location is `/root/projects`. It does not create accounts, migrate repositories, change default users, or shut down WSL. |
+| `-CheckOllamaGpu` | Checks the local Ollama server using the smallest installed model, or `-OllamaModel`. Generates a short response if the model is not loaded, then requires positive reported GPU memory allocation. If already loaded, inspects that allocation without changing its retention time. No model downloads or driver changes. CPU fallback produces a failure, not a success message. |
+| `-DisableGameRecording` | Disables Game DVR, game app capture, and background recording for the current Windows user. Snipping Tool remains available. |
+| `-ChromeMemorySaver` | Enables Memory Saver at the moderate level using per-user Chrome policies. Adds `localhost` and `127.0.0.1` tab-discard exceptions while preserving existing entries. Additional dashboard hostnames can be supplied with `-ChromeKeepAliveSites`. |
+| `-ReviewChromeExtensions` | Reports extension folder counts by Chrome profile for manual review. Does not disable extensions or read browsing history. Presence does not establish resource use or enabled status. |
+
+The storage switches prepare locations for **future projects**. Existing projects do not benefit until you choose to use those locations. Keep Windows builds on the Windows Dev Drive and Linux builds inside WSL. No package-manager cache paths are changed automatically. Dev Drive uses normal Windows trust and Defender behavior; no antivirus exclusions or filter removals are added. Performance depends on the workload and has not been benchmarked.
+
+Storage defaults can be customized using `-DevDrivePath`, `-DevDriveLetter`, `-DevDriveSizeGB` (50 to 1024 GB), and `-WslDistro`. Existing VHDX files are accepted only if their adjacent Quiet Workbench manifest matches the disk identity, computer, user, path, size, and drive letter. Interrupted creation leaves the disk for inspection; rerunning will not reformat it. Keep the VHDX and its manifest together and outside synced folders. The script requires enough host free space for the maximum requested size plus 10 GB.
+
+The VHDX expands as files are added. No startup mount task is installed. After a reboot, rerun `-CreateDevDrive -Apply` if the volume is not mounted. Provisioning or verification is logged on each explicit resource run. Registry preferences already at their targets are skipped.
+
+```powershell
+# Preview only Chrome and game recording preferences
+.\Set-WorkloadOptions.ps1 -ChromeMemorySaver -DisableGameRecording
+
+# Preserve a monitoring site along with local dashboards
+.\Set-WorkloadOptions.ps1 -ChromeMemorySaver -ChromeKeepAliveSites localhost,127.0.0.1,monitor.example.com -Apply
+
+# Restore registry preferences using the exact workload backup printed by the script
+.\Set-WorkloadOptions.ps1 -RestoreFrom '.\zenith-backups\workloads-EXAMPLE.clixml'
+```
+
+Every apply first saves a workload backup and uses the same restore-point approval gate and JSON change logs as the baseline. Workload backups are restored with `Set-WorkloadOptions.ps1`, not the baseline restore switch. **Registry restore retains Dev Drive volumes, WSL folders, and all development files.** The adjacent `.quiet-workbench.clixml` file records Dev Drive provisioning state; System Restore is not a backup of future project data. To stop using a Dev Drive, close programs using it and detach its VHDX with `Dismount-VHD -Path '<exact VHDX path>'` in an administrator PowerShell. Preserve the VHDX until its contents are backed up. No automatic deletion is provided.
+
+Chrome can report these policies as managed. Verify effective policies at `chrome://policy` after reloading policies, or after a browser restart. Organizational policies can override local choices. Only the listed hosts are added as exceptions; remote dashboards need their own hostnames. Extensions and startup configuration remain unchanged. The GPU check verifies allocation, not generation speed or whether the whole model fits in VRAM. A newly loaded diagnostic model is allowed to expire after 30 seconds.
+
+References: [Microsoft Dev Drive](https://learn.microsoft.com/en-us/windows/dev-drive/), [WSL file placement](https://learn.microsoft.com/en-us/windows/dev-environment/wsl-interop), [Ollama API](https://docs.ollama.com/api), [Chrome Memory Saver](https://chromeenterprise.google/policies/high-efficiency-mode-enabled/), [savings level](https://chromeenterprise.google/policies/memory-saver-mode-savings/), and [tab-discard exceptions](https://chromeenterprise.google/policies/tab-discarding-exceptions/).
+
 ## Backups and execution
 
 Each successful change prints `Setting applied - here's what it does:` followed by a plain-language explanation. It only says this after verifying the value. Restore prints `Setting restored` with its explanation.
@@ -161,6 +205,7 @@ Coverage includes default preview, `-Apply`, `-RestoreFrom`, `-UserSettingsOnly`
 .\tests\Test-Switches.ps1
 .\tests\Test-RegistryKey.ps1
 .\tests\Test-PowerSettings.ps1
+.\tests\Test-WorkloadOptions.ps1
 # Interactive confirmation tests: answer A (Yes to All) or L (No to All)
 .\tests\Test-Switches.ps1 -ConfirmCase
 .\tests\Test-Switches.ps1 -ConfirmCase -Decline
@@ -171,6 +216,8 @@ Coverage includes default preview, `-Apply`, `-RestoreFrom`, `-UserSettingsOnly`
 The new server, Developer Mode, and Storage Sense switches were tested individually and together in Windows PowerShell 5.1 and PowerShell 7 using simulated apply, restore, WhatIf, logging, idempotency, and user-only filtering. Guided notification/indexing dispatch was tested with mocked launches. `Test-PowerSettings.ps1` exercises production parsing and command construction with simulated powercfg output, including distinct AC/DC values, malformed output, unsigned timeouts, and restoring an inactive plan. A read-only preview of all new settings also ran on the development machine. New settings have not been live-applied or evaluated for their UI effects.
 
 ## References
+
+Workload tests run the full orchestration with simulated registry, disk provisioning, WSL, restore points, and GPU operations. They exercise preview, WhatIf, apply, restore, logs, exception preservation, and refusal after restore-point failure. Separate helper checks reject unsafe disk targets and unrelated restore entries and detect CPU fallback. These tests do not format a real disk or establish application performance. Live acceptance results are reported separately.
 
 - [Microsoft Project Zenith announcement](https://blogs.windows.com/windowsdeveloper/2026/09/04/announcing-project-zenith-the-ready-to-code-windows-experience/)
 - [Microsoft Windows Developer Configuration](https://github.com/microsoft/WindowsDeveloperConfig/tree/main/windows-dev-config)
