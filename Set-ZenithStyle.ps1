@@ -225,6 +225,7 @@ function Ensure-RegistryKey([string]$Path) {
     }
 }
 
+$script:quietWorkbenchRoot=$PSScriptRoot
 . (Join-Path $PSScriptRoot 'lib\Common.ps1')
 
 if ($RestoreFrom) {

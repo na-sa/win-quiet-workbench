@@ -30,6 +30,7 @@ if ($env:OS -ne 'Windows_NT' -or -not [Environment]::Is64BitProcess) { throw '64
 if ($Apply -and $RestoreFrom) { throw 'Choose apply or restore.' }
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $admin=([Security.Principal.WindowsPrincipal]$identity).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$script:quietWorkbenchRoot=$PSScriptRoot
 . (Join-Path $PSScriptRoot 'lib\Common.ps1')
 . (Join-Path $PSScriptRoot 'lib\Workloads.ps1')
 Write-Warning 'USE AT YOUR OWN RISK. Review the preview and keep backups. Dev Drive creation uses a new virtual disk only. Restore keeps development files and volumes. GPU testing briefly uses compute resources. Chrome Memory Saver can reload inactive tabs.'

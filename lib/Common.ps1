@@ -2,7 +2,7 @@ $script:changeLogPath = $null
 function Write-ChangeLog {
     param($Operation, $Status, $Description, $Before, $Target, $BackupFile, $Detail)
     if (-not $script:changeLogPath) {
-        $logDir = Join-Path $PSScriptRoot 'zenith-logs'
+        $logDir = Join-Path $script:quietWorkbenchRoot 'zenith-logs'
         [System.IO.Directory]::CreateDirectory($logDir) | Out-Null
         $script:changeLogPath = Join-Path $logDir ("changes-{0}-{1}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), [guid]::NewGuid().ToString('N'))
         Write-Host "Change log: $script:changeLogPath"

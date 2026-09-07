@@ -5,8 +5,15 @@ function Read-WorkloadRegistry($Path,$Name) {
     if ($exists) { $value=$key.GetValue($Name); $kind=$key.GetValueKind($Name).ToString() }
     [pscustomobject]@{Path=$Path;Name=$Name;Exists=$exists;Kind=$kind;Value=$value}
 }
+function Ensure-WorkloadRegistryKey($Path) {
+    if (Test-Path -LiteralPath $Path) { return }
+    $parent=Split-Path -Path $Path -Parent
+    if (-not $parent -or $parent -eq $Path) { throw 'Cannot locate the registry parent.' }
+    Ensure-WorkloadRegistryKey $parent
+    New-Item -Path $Path -ErrorAction Stop | Out-Null
+}
 function Set-WorkloadRegistry($Path,$Name,$Kind,$Value) {
-    if (-not (Test-Path -LiteralPath $Path)) { New-Item -Path $Path | Out-Null }
+    Ensure-WorkloadRegistryKey $Path
     New-ItemProperty -LiteralPath $Path -Name $Name -PropertyType $Kind -Value $Value -Force | Out-Null
 }
 function Test-WorkloadRegistryEntry($Entry) {
